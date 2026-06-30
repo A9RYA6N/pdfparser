@@ -1,32 +1,56 @@
 import os
 import sys
+import csv
+import io
 import argparse
 
-TARGET_HEADERS = ["FOLIO_ID", "NAME_1", "ADD_1", "ADD_2", "ADD_3", "CITY", "PIN", "NET_DIV", "WAR_NO", "CHQ_NO", "DD_DATE"]
-TARGET_HEADER_LINE = ",".join(f'"{h}"' for h in TARGET_HEADERS)
+TARGET_HEADERS = [
+    "Investor First \nName",
+    "Investor Middle \nName",
+    "Investor Last \nName",
+    "Father/Husband \nFirst Name",
+    "Father/Husband \nMiddle Name",
+    "Father/Husband Last \nName",
+    "Address",
+    "Country",
+    "State",
+    "District",
+    "Pin Code",
+    "Folio Number",
+    "DP Id-Client Id-\nAccount Number",
+    "Investment Type",
+    "Amount \ntransferred",
+    "Date of event \n(date of declaration of \ndividend/redemption date of \npreference shares/date of \nmaturity of \nbonds/debentures/application \nmoney refundable/interest \nthereon\n(DD-MON-YYYY)",
+]
+
+# Normalized versions for comparison (collapse newlines + strip)
+TARGET_NORMALIZED = [h.replace("\n", " ").strip().lower() for h in TARGET_HEADERS]
 
 
 def fix_csv_headers(file_path):
-    """Checks if a file has the correct headers. If not, prepends them."""
     try:
-        with open(file_path, "r", encoding="utf-8-sig") as f:
-            first_line = f.readline().strip()
+        with open(file_path, "r", encoding="utf-8-sig", newline="") as f:
+            reader = csv.reader(f)
+            first_row = next(reader, [])
 
-        # Clean quotes and spaces to check header structure accurately
-        clean_first_line = first_line.replace('"', '').replace("'", "").strip()
-        clean_target = ",".join(TARGET_HEADERS)
+        first_row_normalized = [c.replace("\n", " ").strip().lower() for c in first_row]
 
-        if clean_first_line == clean_target:
+        if first_row_normalized == TARGET_NORMALIZED:
             print(f"[SKIP] {os.path.basename(file_path)} already has correct headers.")
             return False
 
-        # If headers don't match, read entire content and prepend target headers
-        print(f"[FIXING] Adding headers to: {os.path.basename(file_path)}")
-        with open(file_path, "r", encoding="utf-8-sig") as f:
-            content = f.read()
+        # Read the raw file content to prepend the header row
+        with open(file_path, "r", encoding="utf-8-sig", newline="") as f:
+            existing_content = f.read()
 
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(TARGET_HEADER_LINE + "\n" + content)
+        # Build a properly quoted CSV header row in memory
+        header_buf = io.StringIO()
+        csv.writer(header_buf, quoting=csv.QUOTE_ALL).writerow(TARGET_HEADERS)
+        header_line = header_buf.getvalue()
+
+        print(f"[FIXING] Adding headers to: {os.path.basename(file_path)}")
+        with open(file_path, "w", encoding="utf-8", newline="") as f:
+            f.write(header_line + existing_content)
         return True
 
     except Exception as e:
@@ -35,7 +59,9 @@ def fix_csv_headers(file_path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Check and inject headers into all CSV files inside a directory.")
+    parser = argparse.ArgumentParser(
+        description="Check and inject headers into all CSV files inside a directory."
+    )
     parser.add_argument("directory", help="Path to the directory containing raw CSV files")
     args = parser.parse_args()
 
@@ -43,8 +69,8 @@ def main():
         print(f"[ERROR] Directory not found: {args.directory}")
         sys.exit(1)
 
-    print(f"[START] Scanning directory: {args.directory}\n" + "-"*50)
-    
+    print(f"[START] Scanning directory: {args.directory}\n" + "-" * 50)
+
     fixed_count = 0
     total_csvs = 0
 
@@ -56,7 +82,7 @@ def main():
                 if fix_csv_headers(full_path):
                     fixed_count += 1
 
-    print("-"*50)
+    print("-" * 50)
     print(f"[DONE] Checked {total_csvs} CSV files. Injected headers into {fixed_count} files.")
 
 

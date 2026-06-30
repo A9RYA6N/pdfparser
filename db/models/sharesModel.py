@@ -23,6 +23,7 @@ class Shares(Base):
     net_dividend = Column(Numeric(10, 2))
     war_no = Column(Integer)
     chq_no = Column(Integer)
+    dp_id = Column(String)
     year = Column(Integer)
     date_of_transfer = Column(Date)
     created_at = Column(
