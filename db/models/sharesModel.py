@@ -26,6 +26,7 @@ class Shares(Base):
     dp_id = Column(String)
     year = Column(Integer)
     date_of_transfer = Column(Date)
+    micr_no = Column(String)
     created_at = Column(
         DateTime,
         default = datetime.now

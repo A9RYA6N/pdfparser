@@ -16,12 +16,11 @@ def process_file(file_path, year_value):
             print(f"[SKIP] Empty or invalid file: {os.path.basename(file_path)}")
             return False
 
+        # 2. Add the new field to the end of the header array (if not already present)
         if "year" in original_fields:
-            print(f"[SKIP] 'year' already exists in: {os.path.basename(file_path)}")
-            return False
-
-        # 2. Add the new field to the end of the header array
-        new_fields = original_fields + ["year"]
+            new_fields = original_fields
+        else:
+            new_fields = original_fields + ["year"]
 
         # 3. Write data back to the same file path safely
         with open(file_path, mode="w", newline="", encoding="utf-8") as f:

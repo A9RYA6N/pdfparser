@@ -5,22 +5,14 @@ import io
 import argparse
 
 TARGET_HEADERS = [
-    "Investor First \nName",
-    "Investor Middle \nName",
-    "Investor Last \nName",
-    "Father/Husband \nFirst Name",
-    "Father/Husband \nMiddle Name",
-    "Father/Husband Last \nName",
-    "Address",
-    "Country",
+    "NAME OF THE SHARESHOLDERS",
+    "ADDRESS OF THE SHAREHOLDERS",
     "State",
-    "District",
-    "Pin Code",
-    "Folio Number",
-    "DP Id-Client Id-\nAccount Number",
-    "Investment Type",
-    "Amount \ntransferred",
-    "Date of event \n(date of declaration of \ndividend/redemption date of \npreference shares/date of \nmaturity of \nbonds/debentures/application \nmoney refundable/interest \nthereon\n(DD-MON-YYYY)",
+    "PIN",
+    "Folio Number of Security",
+    "Amount",
+    "Proposed Date of Tr. to IEPF",
+    "Year of Dividend",
 ]
 
 # Normalized versions for comparison (collapse newlines + strip)
