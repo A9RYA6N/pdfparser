@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 PDF Table Extractor
-A clean and safe utility to extract tables from PDF files using Camelot.
+A versatile utility to extract tables from PDF files natively in batch or sequentially.
 """
 
 import os
@@ -22,6 +22,11 @@ def check_dependencies():
     except ImportError:
         missing_packages.append("pandas (install using `pip install pandas`)")
         
+    try:
+        import pypdf
+    except ImportError:
+        missing_packages.append("pypdf (install using `pip install pypdf`)")
+        
     if missing_packages:
         print("[-] Missing Python dependencies:", file=sys.stderr)
         for pkg in missing_packages:
@@ -29,80 +34,79 @@ def check_dependencies():
         sys.exit(1)
 
 def validate_pdf_path(pdf_path):
-    """
-    Safely validate the PDF path.
-    Checks that the file exists, is indeed a file, and has a .pdf extension.
-    """
+    """Safely validate the PDF path."""
     if not pdf_path:
         print("Error: No PDF file path provided.", file=sys.stderr)
         sys.exit(1)
         
     normalized_path = os.path.abspath(pdf_path)
-    
     if not os.path.exists(normalized_path):
         print(f"Error: The file path '{pdf_path}' does not exist.", file=sys.stderr)
         sys.exit(1)
-        
     if not os.path.isfile(normalized_path):
         print(f"Error: The path '{pdf_path}' is a directory, not a file.", file=sys.stderr)
         sys.exit(1)
-        
     if not pdf_path.lower().endswith('.pdf'):
         print(f"Error: The file '{pdf_path}' does not appear to be a PDF file.", file=sys.stderr)
         sys.exit(1)
         
     return normalized_path
 
-def extract_tables(pdf_path, pages='1', flavor='lattice'):
-    """
-    Extract tables from the specified PDF using Camelot.
-    
-    Parameters:
-        pdf_path (str): Validated absolute path to the PDF file.
-        pages (str): Pages to extract (e.g., '1', '1-3', 'all').
-        flavor (str): Camelot flavor ('lattice' or 'stream').
-    """
-    import camelot
-    
-    print(f"[*] Extracting tables from: {pdf_path}")
-    print(f"[*] Parsing pages: {pages}")
-    print(f"[*] Using extraction flavor: {flavor}")
-    print("[*] Running Camelot extraction...")
-    
+def parse_page_range(pages_str, pdf_path):
+    """Expands page layouts into a list of explicit integer values."""
+    from pypdf import PdfReader
     try:
-        # read_pdf is camelot's main extraction method
-        tables = camelot.read_pdf(pdf_path, pages=pages, flavor=flavor)
-        return tables
-    except RuntimeError as e:
-        err_msg = str(e).lower()
-        if 'ghostscript' in err_msg:
-            print("\n[!] Error: Ghostscript is not installed or not in system PATH.", file=sys.stderr)
-            print("    Camelot requires Ghostscript to extract tables from PDFs.", file=sys.stderr)
-            if sys.platform == 'darwin':
-                print("    Fix: Run 'brew install ghostscript' in your terminal.", file=sys.stderr)
-            elif sys.platform.startswith('linux'):
-                print("    Fix: Run 'sudo apt-get install ghostscript' in your terminal.", file=sys.stderr)
-            else:
-                print("    Fix: Install Ghostscript from: https://www.ghostscript.com/download.html", file=sys.stderr)
-        else:
-            print(f"\n[!] Camelot Runtime Error: {e}", file=sys.stderr)
-        sys.exit(1)
-    except Exception as e:
-        print(f"\n[!] Unexpected error occurred during extraction: {e}", file=sys.stderr)
-        sys.exit(1)
+        reader = PdfReader(pdf_path)
+        total_pages = len(reader.pages)
+    except Exception:
+        total_pages = 9999
 
-def display_table_heads(tables):
-    """
-    Display details and the head (first few rows) of each extracted table.
-    """
-    num_tables = len(tables)
-    print(f"\n[+] Extraction complete. Found {num_tables} table(s).")
-    
-    if num_tables == 0:
-        print("No tables were detected. If the tables do not have clear grid lines, try running with '--flavor stream'.")
-        return
+    if pages_str.lower() == 'all':
+        return list(range(1, total_pages + 1))
         
-    # Attempt to import tabulate for nicer grid styling
+    pages = set()
+    for part in pages_str.split(','):
+        if '-' in part:
+            start, end = part.split('-')
+            pages.update(range(int(start), int(end) + 1))
+        else:
+            pages.add(int(part))
+            
+    return sorted(list(pages))
+
+def extract_tables_batch(pdf_path, pages_str, flavor):
+    """Runs extraction on all target pages simultaneously for maximum speed."""
+    import camelot
+    try:
+        return camelot.read_pdf(pdf_path, pages=pages_str, flavor=flavor)
+    except Exception as e:
+        handle_runtime_error(e, "Batch Processing")
+
+def extract_tables_single_page(pdf_path, page_num, flavor):
+    """Runs extraction on an isolated page to avoid memory overhead or to debug."""
+    import camelot
+    try:
+        return camelot.read_pdf(pdf_path, pages=str(page_num), flavor=flavor)
+    except Exception as e:
+        handle_runtime_error(e, f"Page {page_num}")
+
+def handle_runtime_error(e, context_msg):
+    """Handles dependencies failures like Ghostscript mapping systematically."""
+    err_msg = str(e).lower()
+    if 'ghostscript' in err_msg:
+        print(f"\n[!] Error: Ghostscript is not installed or missing from PATH during {context_msg}.", file=sys.stderr)
+        if sys.platform == 'darwin':
+            print("    Fix: Run 'brew install ghostscript' in your terminal.", file=sys.stderr)
+        elif sys.platform.startswith('linux'):
+            print("    Fix: Run 'sudo apt-get install ghostscript' in your terminal.", file=sys.stderr)
+        else:
+            print("    Fix: Install Ghostscript from: https://www.ghostscript.com/download.html", file=sys.stderr)
+    else:
+        print(f"\n[!] Camelot Runtime Error [{context_msg}]: {e}", file=sys.stderr)
+    sys.exit(1)
+
+def display_single_table(table, global_idx):
+    """Renders table metrics and rows head cleanly to console."""
     has_tabulate = False
     try:
         from tabulate import tabulate
@@ -110,70 +114,75 @@ def display_table_heads(tables):
     except ImportError:
         pass
 
-    for i, table in enumerate(tables):
-        print("\n" + "="*80)
-        print(f" TABLE {i + 1} (Page {table.page})")
-        print(f" Shape: {table.df.shape[0]} rows x {table.df.shape[1]} columns")
-        print(f" Accuracy: {table.parsing_report.get('accuracy', 0):.2f}% | Whitespace: {table.parsing_report.get('whitespace', 0):.2f}%")
-        print("="*80)
-        
-        # Display the first 5 rows (head) of the table DataFrame
-        df_head = table.df.head(5)
-        
-        if has_tabulate:
-            print(tabulate(df_head, headers='keys', tablefmt='fancy_grid', showindex=False))
-        else:
-            print(df_head.to_string(index=False))
-            
     print("\n" + "="*80)
+    print(f" TABLE {global_idx} (Page {table.page})")
+    print(f" Shape: {table.df.shape[0]} rows x {table.df.shape[1]} columns")
+    print(f" Accuracy: {table.parsing_report.get('accuracy', 0):.2f}% | Whitespace: {table.parsing_report.get('whitespace', 0):.2f}%")
+    print("="*80)
+    
+    df_head = table.df.head(5)
+    if has_tabulate:
+        print(tabulate(df_head, headers='keys', tablefmt='fancy_grid', showindex=False))
+    else:
+        print(df_head.to_string(index=False))
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Extract tables from PDF files using Camelot and display their heads."
-    )
-    parser.add_argument(
-        "pdf_path",
-        help="Path to the target PDF file."
-    )
-    parser.add_argument(
-        "-p", "--pages",
-        default="1",
-        help="Pages to extract tables from. Examples: '1', '1,2,5', '1-3', 'all'. Default is '1'."
-    )
-    parser.add_argument(
-        "-f", "--flavor",
-        choices=["lattice", "stream"],
-        default="lattice",
-        help="Camelot extraction flavor. 'lattice' uses PDF graphical elements (lines), 'stream' uses whitespace margins. Default is 'lattice'."
-    )
-    parser.add_argument(
-        "-o", "--output-dir",
-        help="Optional directory path to export extracted tables to CSV format."
-    )
+    parser = argparse.ArgumentParser(description="Extract tables from PDF files with custom layout processing modes.")
+    parser.add_argument("pdf_path", help="Path to the target PDF file.")
+    parser.add_argument("-p", "--pages", default="1", 
+                        help="Pages to extract tables from. Examples: '1', '1-3', 'all'. Default is '1'.")
+    parser.add_argument("-f", "--flavor", choices=["lattice", "stream"], default="lattice",
+                        help="Camelot extraction flavor. 'lattice' uses vector lines, 'stream' uses whitespace.")
+    parser.add_argument("-m", "--mode", choices=["batch", "sequential"], default="batch",
+                        help="Execution mode. 'batch' is fast (all at once), 'sequential' is page-by-page. Default is 'batch'.")
+    parser.add_argument("-o", "--output-dir", help="Optional directory path to export extracted tables to CSV format.")
     
     args = parser.parse_args()
-    
-    # 1. Verify dependencies are available
     check_dependencies()
-    
-    # 2. Validate PDF path
     validated_path = validate_pdf_path(args.pdf_path)
     
-    # 3. Extract tables
-    tables = extract_tables(validated_path, pages=args.pages, flavor=args.flavor)
-    
-    # 4. Display heads of extracted tables
-    display_table_heads(tables)
-    
-    # 5. Export if output directory is provided
-    if args.output_dir and len(tables) > 0:
+    if args.output_dir:
         os.makedirs(args.output_dir, exist_ok=True)
-        print(f"[*] Exporting tables to: {args.output_dir}")
-        for i, table in enumerate(tables):
-            csv_path = os.path.join(args.output_dir, f"table_page_{table.page}_idx_{i+1}.csv")
-            table.to_csv(csv_path)
-            print(f"    - Saved table {i+1} to {csv_path}")
-        print("[+] Export finished.")
+
+    print(f"[*] Starting extraction for: {validated_path}")
+    print(f"[*] Flavor: {args.flavor} | Mode: {args.mode}")
+    print("-" * 80)
+
+    global_table_counter = 0
+
+    # MODE 1: NATIVE BATCH EXTRACTION (Fastest Approach)
+    if args.mode == "batch":
+        print("[*] Running native batch compilation...")
+        tables = extract_tables_batch(validated_path, args.pages, flavor=args.flavor)
+        print(f"[+] Complete. Found {len(tables)} table(s) total.")
+        
+        for table in tables:
+            global_table_counter += 1
+            display_single_table(table, global_table_counter)
+            if args.output_dir:
+                csv_path = os.path.join(args.output_dir, f"table_page_{table.page}_idx_{global_table_counter}.csv")
+                table.to_csv(csv_path)
+                print(f"    [SAVED] Table saved to {csv_path}")
+
+    # MODE 2: SEQUENTIAL LOOP EXTRACTION (Debugging / Page Progress)
+    else:
+        page_list = parse_page_range(args.pages, validated_path)
+        for current_page in page_list:
+            print(f"\n--> Processing Page {current_page}...")
+            tables = extract_tables_single_page(validated_path, current_page, flavor=args.flavor)
+            print(f"[+] Page {current_page} complete: Found {len(tables)} table(s).")
+            
+            for i, table in enumerate(tables):
+                global_table_counter += 1
+                display_single_table(table, global_table_counter)
+                if args.output_dir:
+                    csv_path = os.path.join(args.output_dir, f"table_page_{table.page}_idx_{i+1}.csv")
+                    table.to_csv(csv_path)
+                    print(f"    [SAVED] Table saved to {csv_path}")
+
+    print("\n" + "="*80)
+    print(f"[FINISHED] All jobs complete. Total tables extracted: {global_table_counter}")
+    print("="*80)
 
 if __name__ == "__main__":
     main()

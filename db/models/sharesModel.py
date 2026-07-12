@@ -27,6 +27,12 @@ class Shares(Base):
     year = Column(Integer)
     date_of_transfer = Column(Date)
     micr_no = Column(String)
+    demat_acc_no = Column(String)
+    pan_no = Column(String)
+    aadhar_no = Column(String)
+    date_of_birth = Column(Date)
+    joint_holder_name = Column(String)
+
     created_at = Column(
         DateTime,
         default = datetime.now

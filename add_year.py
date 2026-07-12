@@ -57,12 +57,12 @@ def main():
         for csv_file in csv_files:
             if process_file(csv_file, args.year):
                 updated_count += 1
-        print("-"*50 + f"\n[DONE] Successfully appended year '{args.year}' to {updated_count} file(s).")
+        print("-"*5+ f"\n[DONE] Successfully appended year '{args.year}' to {updated_count} file(s).")
         
     elif os.path.isfile(args.path):
         print(f"[*] Target recognized as a single file: {args.path}\n" + "-"*50)
         process_file(args.path, args.year)
-        print("-"*50 + "\n[DONE]")
+        print("-"*5+ "\n[DONE]")
     else:
         print(f"[ERROR] Specified file path context invalid: {args.path}")
         sys.exit(1)
